@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Planning Préparateurs</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ── LOGIN ───────────────────────────────────────────── -->
+<div id="loginPage" class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-mark"><span>C</span></div>
+      <h1>Espace Admin</h1>
+      <p>Planning Préparateurs — EVERE</p>
+    </div>
+    <div id="loginError" class="alert alert-error hidden"></div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="admin@exemple.com">
+    </div>
+    <div class="form-group">
+      <label>Mot de passe</label>
+      <input type="password" id="loginPassword" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="doLogin()">Se connecter</button>
+  </div>
+</div>
+
+<!-- ── APP ─────────────────────────────────────────────── -->
+<div id="appPage" class="hidden">
+
+  <header class="app-header no-print">
+    <div class="header-inner">
+      <span class="header-title">Admin — Planning</span>
+      <div class="header-right">
+        <a href="index.html" class="btn btn-ghost btn-sm">Vue publique</a>
+        <button class="btn btn-ghost btn-sm" onclick="doLogout()">Déconnexion</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <div class="tabs no-print">
+      <button class="tab-btn active" onclick="switchTab('preparateurs')">Préparateurs</button>
+      <button class="tab-btn"        onclick="switchTab('dispos')">Disponibilités</button>
+      <button class="tab-btn"        onclick="switchTab('planning')">Planning</button>
+      <button class="tab-btn"        onclick="switchTab('chef')">Chef de zone</button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         ONGLET 1 — PRÉPARATEURS
+    ════════════════════════════════════════════════════ -->
+    <div class="tab-panel active" id="tab-preparateurs">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Liste des préparateurs</div>
+          <button class="btn btn-primary btn-sm" onclick="openAddWorker()">+ Ajouter</button>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Nom</th><th>Ajouté le</th><th></th></tr></thead>
+          <tbody id="workersList"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         ONGLET 2 — DISPONIBILITÉS
+    ════════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-dispos">
+
+      <!-- Ouvrir une collecte -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Ouvrir une collecte de disponibilités</div>
+        </div>
+        <!-- Semaines actuellement ouvertes -->
+        <div id="activeSlotInfo"></div>
+
+        <!-- Formulaire ouverture -->
+        <div id="openSlotForm">
+          <div class="form-group">
+            <label style="font-size:15px;font-weight:700">Semaine à planifier</label>
+            <select id="slotWeekSelect" onchange="updateDeadlineFromWeek()"></select>
+          </div>
+
+          <div class="alert alert-info hidden" id="slotPreview"></div>
+
+          <details>
+            <summary style="cursor:pointer;font-size:13px;color:var(--gray-500);margin:4px 0 8px">
+              ⚙️ Paramètres (fermeture, quotas)
+            </summary>
+            <div class="form-group mt-3">
+              <label>Fermeture des disponibilités</label>
+              <input type="datetime-local" id="slotDeadline" onchange="updateSlotPreview()">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Max préparateurs / jour</label>
+                <input type="number" id="slotMaxDay" value="6" min="1" max="20">
+              </div>
+              <div class="form-group">
+                <label>Max jours / personne</label>
+                <input type="number" id="slotMaxWorker" value="5" min="1" max="6">
+              </div>
+            </div>
+          </details>
+
+          <button class="btn btn-primary mt-3" onclick="openSlot()">Ouvrir la collecte</button>
+        </div>
+      </div>
+
+      <!-- Vue des disponibilités reçues -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Disponibilités reçues</div>
+          <div class="week-nav" style="margin:0;padding:0;background:none;box-shadow:none;gap:8px">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="changeDispoWeek(-1)">←</button>
+            <span id="dispoWeekLabel" class="week-label" style="font-size:13px"></span>
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="changeDispoWeek(1)">→</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="avail-table" id="availSummaryTable">
+            <thead id="availSummaryHead"></thead>
+            <tbody id="availSummaryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         ONGLET 3 — PLANNING
+    ════════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-planning">
+
+      <div class="flex gap-3 no-print" style="align-items:center;margin-bottom:18px;flex-wrap:wrap">
+        <div class="week-nav" style="margin:0;flex:1">
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="changePlanWeek(-1)">←</button>
+          <span id="planWeekLabel" class="week-label"></span>
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="changePlanWeek(1)">→</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="autoSuggest()">🤖 Suggestion auto</button>
+        <button class="btn btn-primary btn-sm" onclick="savePlanning()">💾 Sauvegarder</button>
+        <button class="btn btn-success btn-sm" onclick="publishPlanning()">✅ Publier</button>
+        <button id="unpublishBtn" class="btn btn-ghost btn-sm hidden" style="color:var(--cf-red)" onclick="unpublishPlanning()">Dépublier</button>
+        <button class="btn btn-ghost btn-sm no-print" onclick="printPlanning()">🖨️ PDF</button>
+      </div>
+
+      <div id="planningDays"></div>
+
+      <!-- Vue tableau pour impression -->
+      <div id="printView" class="hidden">
+        <div class="print-title" id="printTitle"></div>
+        <div class="planning-wrap" id="printTable"></div>
+      </div>
+
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         ONGLET 4 — CHEF DE ZONE
+    ════════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-chef">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Chef de zone par jour</div>
+          <div class="week-nav" style="margin:0;padding:0;background:none;box-shadow:none;gap:8px">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="changeCdzWeek(-1)">←</button>
+            <span id="cdzWeekLabel" class="week-label" style="font-size:13px"></span>
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="changeCdzWeek(1)">→</button>
+          </div>
+        </div>
+        <div class="cdz-grid" id="cdzGrid"></div>
+        <div class="mt-4">
+          <button class="btn btn-primary" onclick="saveCdz()">💾 Sauvegarder</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── MODAL ADD WORKER ─────────────────────────────────── -->
+<div class="modal-overlay hidden" id="addWorkerModal">
+  <div class="modal">
+    <h3>Ajouter un préparateur</h3>
+    <div class="form-group">
+      <label>Prénom</label>
+      <input type="text" id="newWorkerName" placeholder="Ex: Kawtar">
+    </div>
+    <div id="addWorkerError" class="alert alert-error hidden"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAddWorker()">Annuler</button>
+      <button class="btn btn-primary" onclick="addWorker()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/algorithm.js"></script>
+<script>
+let sb;
+let allWorkers = [];
+
+// Current week cursors per tab (Monday date strings)
+let dispoWeek = toDateStr(getMondayOf());
+let planWeek  = toDateStr(getMondayOf());
+let cdzWeek   = toDateStr(getMondayOf());
+
+// In-memory draft assignments: { [day]: { [workerId]: shift|null } }
+let draftAssignments = {};
+
+// ═══════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════
+async function initAuth() {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) showApp();
+}
+
+async function doLogin() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl    = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    errEl.textContent = 'Email ou mot de passe incorrect.';
+    errEl.classList.remove('hidden');
+  } else {
+    showApp();
+  }
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  document.getElementById('appPage').classList.add('hidden');
+  document.getElementById('loginPage').classList.remove('hidden');
+}
+
+function showApp() {
+  document.getElementById('loginPage').classList.add('hidden');
+  document.getElementById('appPage').classList.remove('hidden');
+  initApp();
+}
+
+// ═══════════════════════════════════════════════════════════
+// APP INIT
+// ═══════════════════════════════════════════════════════════
+async function initApp() {
+  await loadWorkers();
+  setSlotDefaults();
+
+  // Caler toutes les semaines sur le slot actif (ou le plus récent)
+  await syncWeeksToActiveSlot();
+
+  await loadDispoTab();
+  await loadPlanningTab();
+  await loadCdzTab();
+
+  document.getElementById('slotDeadline').addEventListener('change', updateSlotPreview);
+}
+
+async function syncWeeksToActiveSlot() {
+  // Cherche d'abord un slot ouvert, sinon le plus récent
+  let { data } = await sb
+    .from('availability_slots')
+    .select('week_start')
+    .eq('is_open', true)
+    .maybeSingle();
+
+  if (!data) {
+    const res = await sb
+      .from('availability_slots')
+      .select('week_start')
+      .order('week_start', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    data = res.data;
+  }
+
+  if (data) {
+    const ws = toDateStr(getMondayOf(parseDate(data.week_start)));
+    dispoWeek = ws;
+    planWeek  = ws;
+    cdzWeek   = ws;
+  }
+}
+
+function setSlotDefaults() {
+  populateWeekSelect();
+}
+
+function populateWeekSelect() {
+  const sel   = document.getElementById('slotWeekSelect');
+  const today = new Date();
+  // Commence à la semaine prochaine
+  const base  = addDays(getMondayOf(today), 7);
+  sel.innerHTML = '';
+  for (let i = 0; i < 5; i++) {
+    const mon = addDays(base, i * 7);
+    const sat = addDays(mon, 5);
+    const wn  = getWeekNumber(mon);
+    const opt = document.createElement('option');
+    opt.value = toDateStr(mon);
+    opt.textContent = `S${wn} — ${formatDate(mon,{day:'numeric',month:'short'})} au ${formatDate(sat,{day:'numeric',month:'short'})}`;
+    if (i === 0) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  updateDeadlineFromWeek();
+}
+
+function updateDeadlineFromWeek() {
+  const ws = document.getElementById('slotWeekSelect').value;
+  if (!ws) return;
+  // Deadline par défaut = jeudi de la semaine AVANT le planning, à 10h
+  const planMon  = parseDate(ws);
+  const thursday = addDays(planMon, -4); // lundi - 4 = jeudi précédent
+  thursday.setHours(10, 0, 0, 0);
+
+  // Si ce jeudi est déjà passé, proposer demain à 20h par défaut
+  const now = new Date();
+  if (thursday <= now) {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() + 1);
+    fallback.setHours(20, 0, 0, 0);
+    document.getElementById('slotDeadline').value = toLocalDatetimeStr(fallback);
+  } else {
+    document.getElementById('slotDeadline').value = toLocalDatetimeStr(thursday);
+  }
+  updateSlotPreview();
+}
+
+function updateSlotPreview() {
+  const ws = document.getElementById('slotWeekSelect').value;
+  const dl = document.getElementById('slotDeadline').value;
+  const el = document.getElementById('slotPreview');
+  if (!ws || !dl) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = `📅 Planning pour <strong>${formatWeekLabel(ws)}</strong> &nbsp;·&nbsp; ⏰ Fermeture : <strong>${formatDeadline(new Date(dl))}</strong>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    const tabs = ['preparateurs','dispos','planning','chef'];
+    b.classList.toggle('active', tabs[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ONGLET 1 — PRÉPARATEURS
+// ═══════════════════════════════════════════════════════════
+async function loadWorkers() {
+  const { data } = await sb.from('workers').select('*').order('name');
+  allWorkers = data || [];
+  renderWorkersList();
+}
+
+function renderWorkersList() {
+  const tbody = document.getElementById('workersList');
+  if (!allWorkers.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-gray text-sm" style="padding:16px">Aucun préparateur ajouté.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allWorkers.map(w => `
+    <tr>
+      <td style="font-weight:600">
+        ${w.name}
+        ${w.is_chef_de_zone ? '<span style="font-size:11px;font-weight:700;background:var(--cf-blue);color:#fff;padding:2px 7px;border-radius:10px;margin-left:6px">CDZ</span>' : ''}
+      </td>
+      <td class="text-gray text-sm">${formatDate(w.created_at, {day:'numeric',month:'short',year:'numeric'})}</td>
+      <td style="text-align:right;display:flex;gap:8px;justify-content:flex-end;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="toggleChef('${w.id}','${w.name}',${!!w.is_chef_de_zone})"
+          style="color:${w.is_chef_de_zone ? 'var(--cf-blue)' : 'var(--gray-400)'}">
+          ${w.is_chef_de_zone ? '★ Chef de zone' : '☆ Chef de zone'}
+        </button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--cf-red)" onclick="deleteWorker('${w.id}','${w.name}')">Supprimer</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openAddWorker() {
+  document.getElementById('newWorkerName').value = '';
+  document.getElementById('addWorkerError').classList.add('hidden');
+  document.getElementById('addWorkerModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('newWorkerName').focus(), 50);
+}
+function closeAddWorker() { document.getElementById('addWorkerModal').classList.add('hidden'); }
+
+async function addWorker() {
+  const name = document.getElementById('newWorkerName').value.trim();
+  const errEl = document.getElementById('addWorkerError');
+  if (!name) { errEl.textContent='Entre un prénom'; errEl.classList.remove('hidden'); return; }
+
+  const { error } = await sb.from('workers').insert({ name });
+  if (error) {
+    errEl.textContent = error.code === '23505' ? 'Ce prénom existe déjà.' : 'Erreur : ' + error.message;
+    errEl.classList.remove('hidden');
+  } else {
+    closeAddWorker();
+    showToast(`✅ ${name} ajouté(e)`);
+    await loadWorkers();
+  }
+}
+
+async function deleteWorker(id, name) {
+  if (!confirm(`Supprimer ${name} ? Toutes ses disponibilités seront aussi supprimées.`)) return;
+  await sb.from('workers').delete().eq('id', id);
+  showToast(`${name} supprimé(e)`);
+  await loadWorkers();
+}
+
+async function toggleChef(id, name, currentVal) {
+  const newVal = !currentVal;
+  const { error } = await sb.from('workers').update({ is_chef_de_zone: newVal }).eq('id', id);
+  if (error) return showToast('Erreur : ' + error.message, 'error');
+  showToast(newVal ? `${name} → Chef de zone` : `${name} → Préparateur`);
+  await loadWorkers();
+}
+
+document.getElementById('newWorkerName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addWorker();
+});
+
+// ═══════════════════════════════════════════════════════════
+// ONGLET 2 — DISPONIBILITÉS
+// ═══════════════════════════════════════════════════════════
+async function loadDispoTab() {
+  await checkActiveSlot();
+  renderDispoWeekNav();
+  await loadAvailSummary();
+}
+
+async function checkActiveSlot() {
+  const now = new Date().toISOString();
+  const { data: openSlots } = await sb
+    .from('availability_slots')
+    .select('*')
+    .eq('is_open', true)
+    .gte('deadline', now)
+    .order('week_start');
+
+  const infoDiv = document.getElementById('activeSlotInfo');
+  const formDiv = document.getElementById('openSlotForm');
+
+  if (openSlots && openSlots.length) {
+    const base = window.location.href.replace(/admin\.html.*$/, 'index.html');
+    infoDiv.innerHTML = openSlots.map(s => {
+      const link = `${base}?slot=${s.id}`;
+      return `
+      <div class="alert alert-success" style="margin-bottom:10px">
+        <div class="flex gap-2" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">
+          <div>
+            <strong>Collecte ouverte</strong> — ${formatWeekLabel(s.week_start)}<br>
+            <span class="text-sm">Fermeture : ${formatDeadline(s.deadline)}</span>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="closeSlot('${s.id}')">Fermer</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.06);border-radius:6px;padding:8px 12px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:600;flex:1;word-break:break-all;font-family:monospace">${link}</span>
+          <button class="btn btn-primary btn-sm" onclick="copyLink('${link}', this)">Copier</button>
+          <a class="btn btn-success btn-sm" href="https://wa.me/?text=${encodeURIComponent('Envoie tes disponibilités pour la semaine ici 👇\n' + link)}" target="_blank">WhatsApp</a>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Si 2 semaines ouvertes, masquer le formulaire
+    if (openSlots.length >= 2) {
+      formDiv.classList.add('hidden');
+      infoDiv.innerHTML += `<div class="alert alert-warning">Maximum 2 semaines ouvertes atteint.</div>`;
+    } else {
+      formDiv.classList.remove('hidden');
+    }
+  } else {
+    infoDiv.innerHTML = '';
+    formDiv.classList.remove('hidden');
+  }
+}
+
+async function openSlot() {
+  const weekStart = document.getElementById('slotWeekSelect').value;
+  const dl        = document.getElementById('slotDeadline').value;
+  if (!weekStart || !dl) return showToast('Sélectionne une semaine', 'error');
+
+  // Deadline ne peut pas être dans le passé
+  if (new Date(dl) <= new Date()) return showToast('La date de fermeture est déjà passée — modifie-la avant d\'ouvrir', 'error');
+
+  // Max 2 semaines ouvertes à la fois
+  const now = new Date().toISOString();
+  const { count } = await sb
+    .from('availability_slots')
+    .select('id', { count:'exact', head:true })
+    .eq('is_open', true)
+    .gte('deadline', now);
+
+  if (count >= 2) return showToast('Maximum 2 semaines ouvertes à la fois', 'error');
+
+  const deadline  = new Date(dl).toISOString();
+  const maxDay    = parseInt(document.getElementById('slotMaxDay').value);
+  const maxWorker = parseInt(document.getElementById('slotMaxWorker').value);
+
+  const { error } = await sb.from('availability_slots').upsert(
+    { week_start: weekStart, deadline, is_open: true, max_per_day: maxDay, max_days_per_worker: maxWorker },
+    { onConflict: 'week_start' }
+  );
+
+  if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
+
+  showToast('✅ Collecte ouverte !');
+  await syncWeeksToActiveSlot();
+  await checkActiveSlot();
+  renderDispoWeekNav();
+  await loadAvailSummary();
+}
+
+async function closeSlot(id) {
+  await sb.from('availability_slots').update({ is_open: false }).eq('id', id);
+  showToast('Collecte fermée');
+  await checkActiveSlot();
+}
+
+function changeDispoWeek(dir) {
+  dispoWeek = toDateStr(addDays(parseDate(dispoWeek), dir * 7));
+  renderDispoWeekNav();
+  loadAvailSummary();
+}
+
+function renderDispoWeekNav() {
+  document.getElementById('dispoWeekLabel').textContent = formatWeekLabel(dispoWeek);
+}
+
+async function loadAvailSummary() {
+  if (!allWorkers.length) return;
+
+  const { data } = await sb
+    .from('availabilities')
+    .select('worker_id, day_of_week, shift')
+    .eq('week_start', dispoWeek);
+
+  const avMap = {};
+  (data||[]).forEach(a => {
+    if (!avMap[a.worker_id]) avMap[a.worker_id] = {};
+    avMap[a.worker_id][a.day_of_week] = a.shift;
+  });
+
+  const mon   = getMondayOf(parseDate(dispoWeek));
+  const thead = document.getElementById('availSummaryHead');
+  const tbody = document.getElementById('availSummaryBody');
+
+  thead.innerHTML = '<tr><th>Préparateur</th>' +
+    DAYS_FR.map((d,i) => `<th>${d.slice(0,3)}<br><small style="font-weight:400">${formatDate(addDays(mon,i),{day:'numeric',month:'numeric'})}</small></th>`).join('') +
+    '<th>Action</th></tr>';
+
+  const LABEL = { full:'J', matin:'M', apm:'A-M', indispo:'—' };
+
+  // Filtre seulement les workers qui ont soumis quelque chose (CDZ séparés visuellement)
+  const submittedIds = new Set(Object.keys(avMap));
+  const workersToShow = allWorkers.filter(w => submittedIds.has(w.id));
+
+  tbody.innerHTML = workersToShow.map(w => {
+    const dayMap  = avMap[w.id] || {};
+    const shifts  = Object.values(dayMap);
+    const isExcluded = shifts.length > 0 && shifts.every(s => s === 'indispo');
+    const isCdz = !!w.is_chef_de_zone;
+
+    const cells = Array.from({length:6}, (_,d) => {
+      const s = dayMap[d];
+      if (!s) return `<td class="c-none">?</td>`;
+      return `<td class="c-${s}">${LABEL[s]||s}</td>`;
+    }).join('');
+
+    const actionBtn = isExcluded
+      ? `<button class="btn btn-ghost btn-sm" style="color:var(--green)" onclick="restoreWorker('${w.id}','${w.name.replace(/'/g,"\\'")}')">↩ Réintégrer</button>`
+      : `<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="removeWorker('${w.id}','${w.name.replace(/'/g,"\\'")}')">✕ Retirer</button>`;
+
+    const rowStyle = isExcluded ? 'opacity:.45;text-decoration:line-through' : '';
+    const cdzBadge = isCdz ? ' <span style="font-size:11px;font-weight:700;background:var(--cf-blue);color:#fff;padding:2px 6px;border-radius:8px;text-decoration:none">CDZ</span>' : '';
+    return `<tr style="${rowStyle}"><td style="text-decoration:none;opacity:1;font-weight:600">${w.name}${cdzBadge}${isExcluded ? ' <span style="font-size:11px;color:var(--cf-red);text-decoration:none">(retiré)</span>' : ''}</td>${cells}<td style="text-decoration:none;opacity:1">${isCdz ? '<span class="text-sm text-gray">Chef de zone</span>' : actionBtn}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="text-gray text-sm" style="padding:14px">Aucune disponibilité reçue pour cette semaine.</td></tr>';
+}
+
+async function removeWorker(wid, name) {
+  if (!confirm(`Retirer ${name} de toute la semaine ?\nSes dispos seront ignorées dans le planning.`)) return;
+
+  const { data: existing } = await sb
+    .from('availabilities')
+    .select('day_of_week')
+    .eq('worker_id', wid)
+    .eq('week_start', dispoWeek);
+
+  if (existing && existing.length) {
+    await sb.from('availabilities')
+      .update({ shift: 'indispo' })
+      .eq('worker_id', wid)
+      .eq('week_start', dispoWeek);
+  } else {
+    const rows = Array.from({length:6}, (_,d) => ({
+      worker_id: wid, week_start: dispoWeek, day_of_week: d, shift: 'indispo'
+    }));
+    await sb.from('availabilities').insert(rows);
+  }
+
+  showToast(`${name} retiré(e) de la semaine`);
+  await loadAvailSummary();
+}
+
+async function restoreWorker(wid, name) {
+  if (!confirm(`Réintégrer ${name} dans la semaine ?`)) return;
+
+  // Supprime les entrées indispo forcées → le worker redevient "pas encore soumis"
+  await sb.from('availabilities')
+    .delete()
+    .eq('worker_id', wid)
+    .eq('week_start', dispoWeek)
+    .eq('shift', 'indispo');
+
+  showToast(`${name} réintégré(e)`);
+  await loadAvailSummary();
+}
+
+// ═══════════════════════════════════════════════════════════
+// ONGLET 3 — PLANNING
+// ═══════════════════════════════════════════════════════════
+async function loadPlanningTab() {
+  renderPlanWeekNav();
+  await loadDraftAssignments();
+  renderPlanningDays();
+  await checkPublishState();
+}
+
+async function checkPublishState() {
+  const { data } = await sb
+    .from('schedule_days')
+    .select('is_published')
+    .eq('week_start', planWeek)
+    .eq('is_published', true)
+    .limit(1)
+    .maybeSingle();
+
+  document.getElementById('unpublishBtn').classList.toggle('hidden', !data);
+}
+
+function changePlanWeek(dir) {
+  planWeek = toDateStr(addDays(parseDate(planWeek), dir * 7));
+  renderPlanWeekNav();
+  loadPlanningTab();
+}
+
+function renderPlanWeekNav() {
+  document.getElementById('planWeekLabel').textContent = formatWeekLabel(planWeek);
+}
+
+async function loadDraftAssignments() {
+  const { data } = await sb
+    .from('schedule_assignments')
+    .select('*, workers(name)')
+    .eq('week_start', planWeek);
+
+  draftAssignments = {};
+  for (let d = 0; d < 6; d++) draftAssignments[d] = {};
+
+  const cdzIds = new Set(allWorkers.filter(w => w.is_chef_de_zone).map(w => w.id));
+  (data||[]).forEach(a => {
+    if (!cdzIds.has(a.worker_id)) {
+      draftAssignments[a.day_of_week][a.worker_id] = a.assigned_shift;
+    }
+  });
+}
+
+async function renderPlanningDays() {
+  // Load availabilities for this week
+  const { data: avails } = await sb
+    .from('availabilities')
+    .select('worker_id, day_of_week, shift')
+    .eq('week_start', planWeek);
+
+  const avMap = {};
+  (avails||[]).forEach(a => {
+    if (!avMap[a.day_of_week]) avMap[a.day_of_week] = {};
+    avMap[a.day_of_week][a.worker_id] = a.shift;
+  });
+
+  const workerMap = {};
+  allWorkers.forEach(w => { workerMap[w.id] = w.name; });
+
+  const mon = getMondayOf(parseDate(planWeek));
+  const container = document.getElementById('planningDays');
+  container.innerHTML = '';
+
+  for (let d = 0; d < 6; d++) {
+    const date = addDays(mon, d);
+    const dayAvails = avMap[d] || {};
+
+    // Workers who submitted availability this day (not indispo, not chef de zone)
+    const available = allWorkers
+      .filter(w => !w.is_chef_de_zone)
+      .map(w => ({ ...w, shift: dayAvails[w.id] }))
+      .filter(w => w.shift && w.shift !== 'indispo');
+
+    // Workers assigned (from draft)
+    const assigned = draftAssignments[d] || {};
+
+    const availCount  = available.filter(w => !assigned[w.id]).length;
+    const assignedCount = Object.keys(assigned).length;
+
+    container.innerHTML += `
+      <div class="planning-day-block">
+        <div class="pdb-header">
+          <span class="pdb-day">${DAYS_FR[d]} ${formatDate(date,{day:'numeric',month:'long'})}</span>
+          <span class="text-sm text-gray">${assignedCount} affecté(s) · ${availCount} dispo(s) restant(s)</span>
+        </div>
+        <div class="pdb-body">
+          <div class="pdb-cols">
+
+            <!-- LISTE DES DISPOS (à affecter) -->
+            <div>
+              <div class="pdb-section-title">Disponibilités reçues</div>
+              ${available.length ? `
+                <div class="worker-pick-list">
+                  ${available.map(w => {
+                    const assignedShift = assigned[w.id];
+                    const isAssigned = !!assignedShift;
+
+                    if (w.shift === 'full') {
+                      // Dispo toute la journée → 3 boutons au choix
+                      return `<div class="worker-pick-item ${isAssigned ? 'assigned' : ''}" style="cursor:default">
+                        <div class="wpi-check">${isAssigned ? '✓' : ''}</div>
+                        <span class="wpi-name">${w.name}</span>
+                        <div class="shift-picker">
+                          <button class="sp-btn sp-full  ${assignedShift==='full'  ? 'sp-on' : ''}" onclick="assignWorker(${d},'${w.id}','full')">J</button>
+                          <button class="sp-btn sp-matin ${assignedShift==='matin' ? 'sp-on' : ''}" onclick="assignWorker(${d},'${w.id}','matin')">M</button>
+                          <button class="sp-btn sp-apm   ${assignedShift==='apm'   ? 'sp-on' : ''}" onclick="assignWorker(${d},'${w.id}','apm')">A-M</button>
+                        </div>
+                      </div>`;
+                    }
+
+                    // Matin ou apm → toggle simple
+                    return `<div class="worker-pick-item ${isAssigned?'assigned':''}" onclick="toggleWorker(${d},'${w.id}','${w.shift}')">
+                      <div class="wpi-check">${isAssigned ? '✓' : ''}</div>
+                      <span class="wpi-name">${w.name}</span>
+                      <span class="badge badge-${w.shift}">${SHIFT_LABELS[w.shift]}</span>
+                    </div>`;
+                  }).join('')}
+                </div>
+              ` : '<p class="text-sm text-gray">Aucune dispo reçue pour ce jour.</p>'}
+            </div>
+
+            <!-- PLANNING DU JOUR (affectés) -->
+            <div>
+              <div class="pdb-section-title">Planning du jour</div>
+              ${['full','matin','apm'].map(shift => {
+                const workers = Object.entries(assigned)
+                  .filter(([,s]) => s === shift)
+                  .map(([wid]) => workerMap[wid] || '?');
+                if (!workers.length) return '';
+                return `<div class="assigned-slot-group">
+                  <div class="assigned-slot-label">${SHIFT_LABELS[shift]}</div>
+                  ${workers.map((name,i) => {
+                    const wid = Object.entries(assigned).filter(([,s])=>s===shift)[i][0];
+                    return `<span class="assigned-worker-tag tag-${shift}">
+                      ${name}
+                      <span class="remove-tag" onclick="removeAssignment(${d},'${wid}')">×</span>
+                    </span>`;
+                  }).join('')}
+                </div>`;
+              }).join('')}
+              ${!Object.keys(assigned).length ? '<p class="text-sm text-gray">Aucun préparateur affecté.</p>' : ''}
+            </div>
+
+          </div>
+        </div>
+      </div>`;
+  }
+}
+
+function toggleWorker(day, workerId, shift) {
+  if (!draftAssignments[day]) draftAssignments[day] = {};
+  if (draftAssignments[day][workerId]) {
+    delete draftAssignments[day][workerId];
+  } else {
+    draftAssignments[day][workerId] = shift;
+  }
+  renderPlanningDays();
+}
+
+// Pour les workers "full" : choisir matin / apm / full manuellement
+// Recliquer le même bouton = désassigner
+function assignWorker(day, workerId, shift) {
+  if (!draftAssignments[day]) draftAssignments[day] = {};
+  if (draftAssignments[day][workerId] === shift) {
+    delete draftAssignments[day][workerId];
+  } else {
+    draftAssignments[day][workerId] = shift;
+  }
+  renderPlanningDays();
+}
+
+function removeAssignment(day, workerId) {
+  if (draftAssignments[day]) delete draftAssignments[day][workerId];
+  renderPlanningDays();
+}
+
+async function autoSuggest() {
+  const [{ data: avails }, { data: historical }] = await Promise.all([
+    sb.from('availabilities').select('*').eq('week_start', planWeek),
+    sb.from('schedule_assignments').select('worker_id, assigned_shift').lt('week_start', planWeek),
+  ]);
+
+  const slot = await sb
+    .from('availability_slots').select('*').eq('week_start', planWeek).maybeSingle();
+
+  const opts = slot.data
+    ? { maxPerDay: slot.data.max_per_day, maxDaysPerWorker: slot.data.max_days_per_worker }
+    : {};
+
+  const result = generateSchedule(allWorkers, avails||[], historical||[], opts);
+
+  draftAssignments = {};
+  for (let d = 0; d < 6; d++) {
+    draftAssignments[d] = {};
+    const day = result[d];
+    ['full','matin','apm'].forEach(s => {
+      (day[s]||[]).forEach(wid => { draftAssignments[d][wid] = s; });
+    });
+  }
+
+  renderPlanningDays();
+  showToast('🤖 Suggestion générée — tu peux modifier');
+}
+
+async function savePlanning() {
+  // Delete existing assignments for this week then re-insert
+  await sb.from('schedule_assignments').delete().eq('week_start', planWeek);
+
+  const rows = [];
+  for (let d = 0; d < 6; d++) {
+    Object.entries(draftAssignments[d]||{}).forEach(([wid, shift]) => {
+      rows.push({ week_start: planWeek, day_of_week: d, worker_id: wid, assigned_shift: shift });
+    });
+  }
+
+  if (rows.length) {
+    const { error } = await sb.from('schedule_assignments').insert(rows);
+    if (error) { showToast('Erreur sauvegarde : '+error.message,'error'); return; }
+  }
+
+  // Upsert schedule_days rows
+  const now = new Date().toISOString();
+  for (let d = 0; d < 6; d++) {
+    await sb.from('schedule_days').upsert(
+      { week_start: planWeek, day_of_week: d, generated_at: now },
+      { onConflict: 'week_start,day_of_week' }
+    );
+  }
+
+  showToast('✅ Planning sauvegardé');
+}
+
+async function publishPlanning() {
+  if (!confirm('Publier ce planning ? Il sera visible par tous les préparateurs.')) return;
+
+  for (let d = 0; d < 6; d++) {
+    await sb.from('schedule_days').upsert(
+      { week_start: planWeek, day_of_week: d, is_published: true },
+      { onConflict: 'week_start,day_of_week' }
+    );
+  }
+  showToast('✅ Planning publié !');
+  await checkPublishState();
+}
+
+async function unpublishPlanning() {
+  if (!confirm('Dépublier ce planning ? Il disparaîtra de la page publique.')) return;
+
+  await sb.from('schedule_days')
+    .update({ is_published: false })
+    .eq('week_start', planWeek);
+
+  showToast('Planning dépublié');
+  await checkPublishState();
+}
+
+async function printPlanning() {
+  // Build planning table and open print view
+  const [{ data: assignments }, { data: days }] = await Promise.all([
+    sb.from('schedule_assignments').select('*').eq('week_start', planWeek),
+    sb.from('schedule_days').select('*').eq('week_start', planWeek),
+  ]);
+
+  const workerMap = {};
+  allWorkers.forEach(w => { workerMap[w.id] = w.name; });
+
+  const title = `${STORE_NAME} S${getWeekNumber(parseDate(planWeek))} — ${formatWeekLabel(planWeek)}`;
+
+  document.getElementById('printTitle').textContent = title;
+  document.getElementById('printTable').innerHTML =
+    buildPlanningTable(planWeek, assignments||[], days||[], workerMap);
+  document.getElementById('printView').classList.remove('hidden');
+  document.getElementById('planningDays').classList.add('hidden');
+
+  window.print();
+
+  setTimeout(() => {
+    document.getElementById('printView').classList.add('hidden');
+    document.getElementById('planningDays').classList.remove('hidden');
+  }, 500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ONGLET 4 — CHEF DE ZONE
+// ═══════════════════════════════════════════════════════════
+async function loadCdzTab() {
+  renderCdzWeekNav();
+  await loadCdzData();
+}
+
+function changeCdzWeek(dir) {
+  cdzWeek = toDateStr(addDays(parseDate(cdzWeek), dir * 7));
+  renderCdzWeekNav();
+  loadCdzData();
+}
+
+function renderCdzWeekNav() {
+  document.getElementById('cdzWeekLabel').textContent = formatWeekLabel(cdzWeek);
+}
+
+async function loadCdzData() {
+  const [{ data: days }, { data: avails }] = await Promise.all([
+    sb.from('schedule_days').select('day_of_week, chef_de_zone').eq('week_start', cdzWeek),
+    sb.from('availabilities').select('worker_id, day_of_week, shift').eq('week_start', cdzWeek),
+  ]);
+
+  const cdzMap = {};
+  (days||[]).forEach(r => { cdzMap[r.day_of_week] = r.chef_de_zone || ''; });
+
+  // Chefs de zone disponibles par jour (ont soumis 'full')
+  const chefs = allWorkers.filter(w => w.is_chef_de_zone);
+  const availByDay = {};
+  (avails||[]).forEach(a => {
+    if (!availByDay[a.day_of_week]) availByDay[a.day_of_week] = {};
+    availByDay[a.day_of_week][a.worker_id] = a.shift;
+  });
+
+  const mon = getMondayOf(parseDate(cdzWeek));
+  const grid = document.getElementById('cdzGrid');
+  grid.innerHTML = DAYS_FR.map((day, d) => {
+    const date = addDays(mon, d);
+    const current = cdzMap[d] || '';
+
+    // Chefs dispo ce jour (shift full)
+    const disponibles = chefs.filter(c => {
+      const s = availByDay[d] && availByDay[d][c.id];
+      return s === 'full';
+    });
+
+    const options = `<option value="">— Non assigné —</option>` +
+      disponibles.map(c =>
+        `<option value="${c.name}" ${c.name === current ? 'selected' : ''}>${c.name}</option>`
+      ).join('') +
+      // Si valeur actuelle pas dans la liste des dispos, l'ajouter quand même
+      (current && !disponibles.find(c => c.name === current)
+        ? `<option value="${current}" selected>${current} (non dispo ce jour)</option>`
+        : '');
+
+    return `<div class="cdz-card">
+      <div class="cdz-day">${day} ${formatDate(date, {day:'numeric', month:'long'})}</div>
+      <div class="form-group" style="margin:0">
+        <select id="cdz-${d}">${options}</select>
+      </div>
+      ${!disponibles.length ? '<p class="text-sm text-gray" style="margin-top:6px">Aucun chef de zone disponible ce jour.</p>' : ''}
+    </div>`;
+  }).join('');
+}
+
+async function saveCdz() {
+  for (let d = 0; d < 6; d++) {
+    const val = document.getElementById(`cdz-${d}`)?.value.trim() || '';
+    await sb.from('schedule_days').upsert(
+      { week_start: cdzWeek, day_of_week: d, chef_de_zone: val },
+      { onConflict: 'week_start,day_of_week' }
+    );
+  }
+  showToast('✅ Chefs de zone sauvegardés');
+}
+
+// ═══════════════════════════════════════════════════════════
+function copyLink(link, btn) {
+  navigator.clipboard.writeText(link).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copié !';
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  }).catch(() => {
+    // Fallback si clipboard API non dispo
+    const ta = document.createElement('textarea');
+    ta.value = link;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✓ Copié !';
+    setTimeout(() => { btn.textContent = 'Copier le lien'; }, 2000);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+initAuth();
+</script>
+</body>
+</html>
