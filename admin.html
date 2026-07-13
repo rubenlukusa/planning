@@ -106,15 +106,6 @@
                 <input type="number" id="slotMaxWorker" value="5" min="1" max="6">
               </div>
             </div>
-            <div class="form-group" style="margin-top:4px">
-              <label style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--gray-700)">
-                <input type="checkbox" id="slotAutoSendPdf">
-                Mode PDF auto
-              </label>
-              <div class="text-sm text-gray" style="margin-top:4px">
-                Ouvre l'export A4 portrait automatiquement à la publication pour éviter d'oublier l'envoi.
-              </div>
-            </div>
           </details>
 
           <button class="btn btn-primary mt-3" onclick="openSlot()">Ouvrir la collecte</button>
@@ -156,9 +147,7 @@
         <button class="btn btn-primary btn-sm" onclick="savePlanning()">💾 Sauvegarder</button>
         <button class="btn btn-success btn-sm" onclick="publishPlanning()">✅ Publier</button>
         <button id="unpublishBtn" class="btn btn-ghost btn-sm hidden" style="color:var(--cf-red)" onclick="unpublishPlanning()">Dépublier</button>
-        <button class="btn btn-ghost btn-sm no-print" onclick="printPlanning()">📄 PDF A4</button>
-        <button class="btn btn-ghost btn-sm no-print" onclick="markPdfSent()">✅ Envoyé</button>
-        <span id="pdfStatusLabel" class="text-sm text-gray" style="margin-left:auto"></span>
+        <button class="btn btn-ghost btn-sm no-print" onclick="printPlanning()">🖨️ PDF</button>
       </div>
 
       <div id="planningDays"></div>
@@ -496,14 +485,6 @@ async function checkActiveSlot() {
           <div>
             <strong>Collecte ouverte</strong> — ${formatWeekLabel(s.week_start)}<br>
             <span class="text-sm">Fermeture : ${formatDeadline(s.deadline)}</span>
-            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <span class="badge" style="background:${s.auto_send_pdf ? 'var(--green-light)' : 'var(--gray-100)'};color:${s.auto_send_pdf ? 'var(--green)' : 'var(--gray-500)'}">
-                PDF auto ${s.auto_send_pdf ? 'ON' : 'OFF'}
-              </span>
-              <span class="badge" style="background:${s.pdf_sent_at ? 'var(--cf-blue-light)' : 'var(--amber-light)'};color:${s.pdf_sent_at ? 'var(--cf-blue)' : 'var(--amber)'}">
-                ${s.pdf_sent_at ? 'PDF envoyé' : 'PDF à envoyer'}
-              </span>
-            </div>
           </div>
           <button class="btn btn-danger btn-sm" onclick="closeSlot('${s.id}')">Fermer</button>
         </div>
@@ -549,24 +530,9 @@ async function openSlot() {
   const deadline  = new Date(dl).toISOString();
   const maxDay    = parseInt(document.getElementById('slotMaxDay').value);
   const maxWorker = parseInt(document.getElementById('slotMaxWorker').value);
-  const autoSendPdf = document.getElementById('slotAutoSendPdf').checked;
-
-  const { data: existingSlot } = await sb
-    .from('availability_slots')
-    .select('pdf_sent_at')
-    .eq('week_start', weekStart)
-    .maybeSingle();
 
   const { error } = await sb.from('availability_slots').upsert(
-    {
-      week_start: weekStart,
-      deadline,
-      is_open: true,
-      max_per_day: maxDay,
-      max_days_per_worker: maxWorker,
-      auto_send_pdf: autoSendPdf,
-      pdf_sent_at: existingSlot?.pdf_sent_at || null,
-    },
+    { week_start: weekStart, deadline, is_open: true, max_per_day: maxDay, max_days_per_worker: maxWorker },
     { onConflict: 'week_start' }
   );
 
@@ -692,7 +658,6 @@ async function loadPlanningTab() {
   await loadDraftAssignments();
   renderPlanningDays();
   await checkPublishState();
-  await refreshPdfStatus();
 }
 
 async function checkPublishState() {
@@ -705,42 +670,6 @@ async function checkPublishState() {
     .maybeSingle();
 
   document.getElementById('unpublishBtn').classList.toggle('hidden', !data);
-}
-
-function formatShortDateTime(ts) {
-  return new Date(ts).toLocaleString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-async function getPlanSlot() {
-  const { data } = await sb
-    .from('availability_slots')
-    .select('id, week_start, auto_send_pdf, pdf_sent_at, is_open, deadline')
-    .eq('week_start', planWeek)
-    .maybeSingle();
-  return data || null;
-}
-
-async function refreshPdfStatus() {
-  const label = document.getElementById('pdfStatusLabel');
-  if (!label) return;
-
-  const slot = await getPlanSlot();
-  if (!slot) {
-    label.textContent = 'Aucune collecte liée à cette semaine';
-    return;
-  }
-
-  const autoText = slot.auto_send_pdf ? 'Auto PDF ON' : 'Auto PDF OFF';
-  const sentText = slot.pdf_sent_at ? `Envoyé le ${formatShortDateTime(slot.pdf_sent_at)}` : 'Pas encore envoyé';
-  label.innerHTML = `
-    <span class="badge" style="background:${slot.auto_send_pdf ? 'var(--green-light)' : 'var(--gray-100)'};color:${slot.auto_send_pdf ? 'var(--green)' : 'var(--gray-500)'}">${autoText}</span>
-    <span class="badge" style="background:${slot.pdf_sent_at ? 'var(--cf-blue-light)' : 'var(--amber-light)'};color:${slot.pdf_sent_at ? 'var(--cf-blue)' : 'var(--amber)'};margin-left:6px">${sentText}</span>
-  `;
 }
 
 function changePlanWeek(dir) {
@@ -970,13 +899,6 @@ async function publishPlanning() {
   }
   showToast('✅ Planning publié !');
   await checkPublishState();
-  await refreshPdfStatus();
-
-  const slot = await getPlanSlot();
-  if (slot && slot.auto_send_pdf && !slot.pdf_sent_at) {
-    showToast('📄 Export PDF ouvert automatiquement', 'info');
-    printPlanning();
-  }
 }
 
 async function unpublishPlanning() {
@@ -988,7 +910,6 @@ async function unpublishPlanning() {
 
   showToast('Planning dépublié');
   await checkPublishState();
-  await refreshPdfStatus();
 }
 
 async function printPlanning() {
@@ -1015,22 +936,6 @@ async function printPlanning() {
     document.getElementById('printView').classList.add('hidden');
     document.getElementById('planningDays').classList.remove('hidden');
   }, 500);
-}
-
-async function markPdfSent() {
-  const slot = await getPlanSlot();
-  if (!slot) return showToast('Aucune collecte liée à cette semaine', 'error');
-
-  const { error } = await sb
-    .from('availability_slots')
-    .update({ pdf_sent_at: new Date().toISOString() })
-    .eq('id', slot.id);
-
-  if (error) return showToast('Erreur mise à jour PDF : ' + error.message, 'error');
-
-  showToast('✅ PDF marqué comme envoyé');
-  await refreshPdfStatus();
-  await checkActiveSlot();
 }
 
 // ═══════════════════════════════════════════════════════════

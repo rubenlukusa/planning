@@ -17,8 +17,6 @@ CREATE TABLE IF NOT EXISTS availability_slots (
   is_open             BOOLEAN DEFAULT TRUE,
   max_per_day         INTEGER DEFAULT 6,
   max_days_per_worker INTEGER DEFAULT 5,
-  auto_send_pdf       BOOLEAN DEFAULT FALSE,
-  pdf_sent_at         TIMESTAMPTZ,
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
