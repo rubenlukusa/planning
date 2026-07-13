@@ -10,7 +10,9 @@
 // Un worker ne peut être assigné "full" que s'il a soumis "full" comme dispo.
 // Un worker "full" peut cependant être mis en matin ou apm selon les besoins.
 
-function buildEquityMap(historicalAssignments) {
+function buildEquityMap(historicalAssignments, resetEquity = false) {
+  if (resetEquity) return {};
+
   const map = {};
   for (const a of historicalAssignments) {
     map[a.worker_id] = (map[a.worker_id] || 0) + (SHIFT_HOURS[a.assigned_shift] || 0);
@@ -30,7 +32,7 @@ function generateSchedule(workers, availabilities, historicalAssignments, option
   const maxDaysPerWorker = options.maxDaysPerWorker || 5;
   const TARGET = 3; // 3 présences matin + 3 présences après-midi
 
-  const equity   = buildEquityMap(historicalAssignments);
+  const equity   = buildEquityMap(historicalAssignments, !!options.resetEquity);
   const weekDays = {};
   workers.forEach(w => { weekDays[w.id] = 0; });
 

@@ -38,6 +38,7 @@
       <div class="header-right">
         <a href="index.html" class="btn btn-ghost btn-sm">Vue publique</a>
         <button class="btn btn-ghost btn-sm" onclick="doLogout()">Déconnexion</button>
+         <button class="btn btn-ghost btn-sm" onclick="resetEquity()">Réinitialiser l'équité</button>
       </div>
     </div>
   </header>
@@ -832,7 +833,7 @@ function removeAssignment(day, workerId) {
   renderPlanningDays();
 }
 
-async function autoSuggest() {
+async function autoSuggest(resetEquity = false) {
   const [{ data: avails }, { data: historical }] = await Promise.all([
     sb.from('availabilities').select('*').eq('week_start', planWeek),
     sb.from('schedule_assignments').select('worker_id, assigned_shift').lt('week_start', planWeek),
@@ -844,6 +845,10 @@ async function autoSuggest() {
   const opts = slot.data
     ? { maxPerDay: slot.data.max_per_day, maxDaysPerWorker: slot.data.max_days_per_worker }
     : {};
+
+  if (resetEquity) {
+    opts.resetEquity = true;
+  }
 
   const result = generateSchedule(allWorkers, avails||[], historical||[], opts);
 
@@ -858,6 +863,12 @@ async function autoSuggest() {
 
   renderPlanningDays();
   showToast('🤖 Suggestion générée — tu peux modifier');
+}
+
+async function resetEquity() {
+  if (!confirm('Réinitialiser l'équité ? La prochaine suggestion ignorera l'historique des anciens tests.')) return;
+  await autoSuggest(true);
+  showToast('♻️ Équité réinitialisée pour la suggestion en cours', 'info');
 }
 
 async function savePlanning() {
