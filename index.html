@@ -210,12 +210,12 @@ async function maybeAutoGenerate() {
 async function runAutoGenerate(slot) {
   const [{ data: avails }, { data: historical }] = await Promise.all([
     sb.from('availabilities').select('*').eq('week_start', slot.week_start),
-    sb.from('schedule_assignments').select('worker_id, assigned_shift').lt('week_start', slot.week_start),
+    sb.from('schedule_assignments').select('worker_id, assigned_shift, week_start').lt('week_start', slot.week_start),
   ]);
 
   const schedule = generateSchedule(
     allWorkers, avails || [], historical || [],
-    { maxPerDay: slot.max_per_day, maxDaysPerWorker: slot.max_days_per_worker }
+    { maxPerDay: slot.max_per_day, maxDaysPerWorker: slot.max_days_per_worker, currentWeekStart: slot.week_start }
   );
 
   const rows = [];

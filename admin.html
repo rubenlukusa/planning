@@ -836,14 +836,14 @@ function removeAssignment(day, workerId) {
 async function autoSuggest(resetEquity = false) {
   const [{ data: avails }, { data: historical }] = await Promise.all([
     sb.from('availabilities').select('*').eq('week_start', planWeek),
-    sb.from('schedule_assignments').select('worker_id, assigned_shift').lt('week_start', planWeek),
+    sb.from('schedule_assignments').select('worker_id, assigned_shift, week_start').lt('week_start', planWeek),
   ]);
 
   const slot = await sb
     .from('availability_slots').select('*').eq('week_start', planWeek).maybeSingle();
 
   const opts = slot.data
-    ? { maxPerDay: slot.data.max_per_day, maxDaysPerWorker: slot.data.max_days_per_worker }
+    ? { maxPerDay: slot.data.max_per_day, maxDaysPerWorker: slot.data.max_days_per_worker, currentWeekStart: planWeek }
     : {};
 
   if (resetEquity) {
@@ -866,7 +866,7 @@ async function autoSuggest(resetEquity = false) {
 }
 
 async function resetEquity() {
-  if (!confirm('Réinitialiser l'équité ? La prochaine suggestion ignorera l'historique des anciens tests.')) return;
+  if (!confirm("Réinitialiser l'équité ? La prochaine suggestion ignorera l'historique des anciens tests.")) return;
   await autoSuggest(true);
   showToast('♻️ Équité réinitialisée pour la suggestion en cours', 'info');
 }

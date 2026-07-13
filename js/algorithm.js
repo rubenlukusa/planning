@@ -1,21 +1,43 @@
 // Génération automatique du planning — équité + couverture 3 matin + 3 après-midi
 //
 // Règle métier : chaque jour doit avoir 3 présences le matin ET 3 l'après-midi.
-// Combinaisons (nFull, nMatin, nApm) — priorité dans cet ordre :
-//   1) (0, 3, 3) → 6 workers  ← priorité équité : tout le monde se partage la journée
-//   2) (1, 2, 2) → 5 workers  ← si on peut faire mieux avec un full
-//   3) (2, 1, 1) → 4 workers  ← si pas assez de matin/apm
-//   4) (3, 0, 0) → 3 workers  ← dernier recours (seulement si 3+ ont mis "full")
+// L'algo teste plusieurs répartitions possibles, puis choisit celle qui minimise
+// la charge projetée et évite de trop solliciter les mêmes personnes sur plusieurs semaines.
 //
 // Un worker ne peut être assigné "full" que s'il a soumis "full" comme dispo.
 // Un worker "full" peut cependant être mis en matin ou apm selon les besoins.
 
-function buildEquityMap(historicalAssignments, resetEquity = false) {
-  if (resetEquity) return {};
+const MS_PER_DAY  = 24 * 60 * 60 * 1000;
+const MS_PER_WEEK = 7 * MS_PER_DAY;
+
+function buildEquityMap(historicalAssignments, options = {}) {
+  if (options.resetEquity) return {};
+
+  const currentWeekStart = options.currentWeekStart ? parseDate(options.currentWeekStart) : null;
 
   const map = {};
-  for (const a of historicalAssignments) {
-    map[a.worker_id] = (map[a.worker_id] || 0) + (SHIFT_HOURS[a.assigned_shift] || 0);
+  for (const a of (historicalAssignments || [])) {
+    if (!map[a.worker_id]) {
+      map[a.worker_id] = {
+        weightedHours: 0,
+        full: 0,
+        matin: 0,
+        apm: 0,
+      };
+    }
+
+    const rawHours = SHIFT_HOURS[a.assigned_shift] || 0;
+    const assignedWeek = a.week_start ? parseDate(a.week_start) : null;
+    const weeksAgo = currentWeekStart && assignedWeek
+      ? Math.max(0, Math.round((currentWeekStart - assignedWeek) / MS_PER_WEEK))
+      : 0;
+
+    // Les semaines anciennes pèsent moins que les récentes.
+    const recencyWeight = 1 / (1 + weeksAgo * 0.7);
+    map[a.worker_id].weightedHours += rawHours * recencyWeight;
+    if (a.assigned_shift === 'full') map[a.worker_id].full += 1;
+    if (a.assigned_shift === 'matin') map[a.worker_id].matin += 1;
+    if (a.assigned_shift === 'apm') map[a.worker_id].apm += 1;
   }
   return map;
 }
@@ -32,13 +54,26 @@ function generateSchedule(workers, availabilities, historicalAssignments, option
   const maxDaysPerWorker = options.maxDaysPerWorker || 5;
   const TARGET = 3; // 3 présences matin + 3 présences après-midi
 
-  const equity   = buildEquityMap(historicalAssignments, !!options.resetEquity);
+  const equity   = buildEquityMap(historicalAssignments, options);
   const weekDays = {};
   workers.forEach(w => { weekDays[w.id] = 0; });
 
-  // Score bas = priorité haute (moins d'heures historiques = travaille en premier)
-  function score(wid) {
-    return (equity[wid] || 0) + (weekDays[wid] || 0) * 9;
+  function getStats(wid) {
+    return equity[wid] || { weightedHours: 0, full: 0, matin: 0, apm: 0 };
+  }
+
+  // Score bas = priorité haute.
+  // On pénalise surtout la charge horaire récente, puis les jours déjà posés,
+  // puis le volume de full pour mieux répartir les journées complètes.
+  function score(wid, extra = {}) {
+    const stats = getStats(wid);
+    const weightedHours = (stats.weightedHours || 0) + (extra.hours || 0);
+    const fullCount     = (stats.full || 0) + (extra.full || 0);
+    const matinCount    = (stats.matin || 0) + (extra.matin || 0);
+    const apmCount      = (stats.apm || 0) + (extra.apm || 0);
+    const plannedDays   = (weekDays[wid] || 0) + (extra.days || 0);
+
+    return weightedHours + fullCount * 2.6 + (matinCount + apmCount) * 1.1 + plannedDays * 9;
   }
 
   function sortByScore(arr) {
@@ -47,9 +82,36 @@ function generateSchedule(workers, availabilities, historicalAssignments, option
       .sort((a, b) => score(a.worker_id) - score(b.worker_id));
   }
 
+  function buildAssignmentExtras(assignments) {
+    const extras = {};
+    for (const { worker_id, shift } of assignments) {
+      if (!extras[worker_id]) {
+        extras[worker_id] = { hours: 0, full: 0, matin: 0, apm: 0, days: 1 };
+      }
+      extras[worker_id].hours += SHIFT_HOURS[shift] || 0;
+      extras[worker_id][shift] += 1;
+    }
+    return extras;
+  }
+
+  function evaluateCandidate(assignments) {
+    const extras = buildAssignmentExtras(assignments);
+    const scores = workers.map(w => score(w.id, extras[w.id] || {})).sort((a, b) => a - b);
+    const spread = scores.length ? scores[scores.length - 1] - scores[0] : 0;
+    const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : 0;
+    const variance = scores.reduce((acc, value) => acc + Math.pow(value - average, 2), 0);
+
+    return {
+      spread,
+      variance,
+      distinctWorkers: Object.keys(extras).length,
+      extras,
+    };
+  }
+
   const result = {};
 
-  // Ordre de priorité des combos : (nFull → nMatin = nApm = TARGET - nFull)
+  // Les combos les plus équilibrés sont évalués en premier, mais le score final décide.
   const COMBO_ORDER = [0, 1, 2, 3];
 
   for (let day = 0; day < 6; day++) {
@@ -64,7 +126,7 @@ function generateSchedule(workers, availabilities, historicalAssignments, option
     const matinSorted = sortByScore(dayAvails.filter(a => a.shift === 'matin'));
     const apmSorted   = sortByScore(dayAvails.filter(a => a.shift === 'apm'));
 
-    let placed = false;
+    const candidates = [];
 
     for (const nFull of COMBO_ORDER) {
       const nEach = TARGET - nFull; // nb matin ET nb apm nécessaires
@@ -89,26 +151,44 @@ function generateSchedule(workers, availabilities, historicalAssignments, option
       if (apmPool.length < nEach) continue;
       const assignedApm = apmPool.slice(0, nEach);
 
-      // Combo valide — on l'applique
-      assignedFull.forEach(a => {
+      const candidateAssignments = [
+        ...assignedFull.map(a => ({ worker_id: a.worker_id, shift: 'full' })),
+        ...assignedMatin.map(a => ({ worker_id: a.worker_id, shift: 'matin' })),
+        ...assignedApm.map(a => ({ worker_id: a.worker_id, shift: 'apm' })),
+      ];
+
+      candidates.push({
+        nFull,
+        assignedFull,
+        assignedMatin,
+        assignedApm,
+        ...evaluateCandidate(candidateAssignments),
+      });
+    }
+
+    if (candidates.length) {
+      candidates.sort((a, b) => {
+        if (a.spread !== b.spread) return a.spread - b.spread;
+        if (a.variance !== b.variance) return a.variance - b.variance;
+        if (a.distinctWorkers !== b.distinctWorkers) return b.distinctWorkers - a.distinctWorkers;
+        return a.nFull - b.nFull;
+      });
+
+      const best = candidates[0];
+      best.assignedFull.forEach(a => {
         result[day].full.push(a.worker_id);
         weekDays[a.worker_id] = (weekDays[a.worker_id] || 0) + 1;
       });
-      assignedMatin.forEach(a => {
+      best.assignedMatin.forEach(a => {
         result[day].matin.push(a.worker_id);
         weekDays[a.worker_id] = (weekDays[a.worker_id] || 0) + 1;
       });
-      assignedApm.forEach(a => {
+      best.assignedApm.forEach(a => {
         result[day].apm.push(a.worker_id);
         weekDays[a.worker_id] = (weekDays[a.worker_id] || 0) + 1;
       });
-
-      placed = true;
-      break;
-    }
-
-    // Fallback : pas assez de monde pour une combo complète → couverture partielle
-    if (!placed) {
+    } else {
+      // Fallback : pas assez de monde pour une combo complète → couverture partielle
       let morningLeft = TARGET, afternoonLeft = TARGET;
       const all = sortByScore(dayAvails);
       for (const a of all) {
