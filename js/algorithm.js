@@ -2,8 +2,8 @@
 //
 // Règle métier : chaque jour doit avoir 3 présences le matin ET 3 l'après-midi.
 // Combinaisons (nFull, nMatin, nApm) — priorité dans cet ordre :
-//   1) (1, 2, 2) → 5 workers  ← IDÉAL : max de monde, 1 full journée équitable
-//   2) (0, 3, 3) → 6 workers  ← si personne n'est dispo full
+//   1) (0, 3, 3) → 6 workers  ← priorité équité : tout le monde se partage la journée
+//   2) (1, 2, 2) → 5 workers  ← si on peut faire mieux avec un full
 //   3) (2, 1, 1) → 4 workers  ← si pas assez de matin/apm
 //   4) (3, 0, 0) → 3 workers  ← dernier recours (seulement si 3+ ont mis "full")
 //
@@ -48,7 +48,7 @@ function generateSchedule(workers, availabilities, historicalAssignments, option
   const result = {};
 
   // Ordre de priorité des combos : (nFull → nMatin = nApm = TARGET - nFull)
-  const COMBO_ORDER = [1, 0, 2, 3];
+  const COMBO_ORDER = [0, 1, 2, 3];
 
   for (let day = 0; day < 6; day++) {
     result[day] = { full: [], matin: [], apm: [] };
