@@ -815,6 +815,8 @@ body {
 
 /* ── PRINT ──────────────────────────────────────────────── */
 @media print {
+  @page { margin: 5mm; }
+
   body { background: white; }
   .no-print { display: none !important; }
   .print-title {
@@ -823,8 +825,35 @@ body {
     margin-bottom: 14px;
     color: var(--cf-blue);
   }
-  .planning-table { font-size: 11px; }
-  .planning-table td { padding: 5px 8px; }
+  .planning-wrap { overflow: visible; }
+  .planning-table {
+    font-size: 10px;
+    min-width: 0;
+    width: 100%;
+    table-layout: fixed;
+  }
+  .planning-table td {
+    padding: 4px 6px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .store-col {
+    min-width: 56px;
+    width: 56px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .shift-label {
+    width: 54px;
+    font-size: 10px;
+  }
+  .chef-label,
+  .chef-value {
+    font-size: 10px;
+  }
+  .day-header {
+    font-size: 12px;
+  }
   .store-col { background: var(--cf-blue) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .day-header { background: var(--cf-red) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
