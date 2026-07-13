@@ -36,7 +36,6 @@
     <div class="header-inner">
       <span class="header-title">Admin — Planning</span>
       <div class="header-right">
-        <a href="index.html" class="btn btn-ghost btn-sm">Vue publique</a>
         <button class="btn btn-ghost btn-sm" onclick="doLogout()">Déconnexion</button>
          <button class="btn btn-ghost btn-sm" onclick="resetEquity()">Réinitialiser l'équité</button>
       </div>
@@ -113,6 +112,58 @@
         </div>
       </div>
 
+      <!-- Saisir les disponibilités (sur place, sans lien) -->
+      <div class="card mt-4">
+        <div class="card-header">
+          <div class="card-title">Saisir les disponibilités</div>
+        </div>
+
+        <div id="dispoEntryClosed" class="hidden" style="padding:0 18px 18px">
+          <div class="alert alert-warning" style="margin:0">
+            <strong>Collecte fermée</strong> pour cette semaine.<br>
+            <span class="text-sm">Ouvre une collecte ci-dessus pour pouvoir saisir les disponibilités.</span>
+          </div>
+        </div>
+
+        <div id="dispoEntryPanel" class="hidden" style="padding:0 18px 18px">
+          <div class="week-banner" id="dispoEntryBanner"></div>
+
+          <div class="form-group" style="position:relative">
+            <label for="dispoEntryWorker" style="font-size:15px;font-weight:700">Préparateur</label>
+            <input type="text" id="dispoEntryWorker"
+                   placeholder="Ex: Kawtar, Rayan, Soraya…"
+                   autocomplete="off"
+                   style="font-size:18px;padding:14px">
+            <div id="dispoEntrySuggestions" class="ac-dropdown hidden"></div>
+          </div>
+
+          <div id="dispoEntryAvailForm" class="hidden">
+            <hr class="divider">
+            <p class="text-sm text-gray" style="margin-bottom:14px">
+              Indique le créneau pour chaque jour. Laisse vide ou coche « Indispo » si la personne n'est pas disponible.
+            </p>
+            <div class="avail-grid" id="dispoEntryGrid"></div>
+            <div class="mt-4">
+              <div id="dispoEntryModifyNotice" class="alert alert-info hidden" style="margin-bottom:12px">
+                Disponibilités déjà enregistrées — tu peux les modifier ci-dessous.
+              </div>
+              <button id="dispoEntrySubmitBtn" class="btn btn-primary btn-full" style="font-size:16px;padding:14px" onclick="submitDispoEntry()">
+                Enregistrer les disponibilités
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="dispoEntrySuccess" class="hidden" style="padding:0 18px 18px">
+          <div class="dispo-entry-success">
+            <div class="dispo-entry-success-icon">✅</div>
+            <div class="dispo-entry-success-name" id="dispoEntrySuccessName"></div>
+            <div class="dispo-entry-success-sub">Disponibilités enregistrées !</div>
+            <button class="btn btn-primary" onclick="resetDispoEntryForm()">Personne suivante →</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Vue des disponibilités reçues -->
       <div class="card">
         <div class="card-header">
@@ -127,6 +178,19 @@
           <table class="avail-table" id="availSummaryTable">
             <thead id="availSummaryHead"></thead>
             <tbody id="availSummaryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header">
+          <div class="card-title">Récapitulatif par personne</div>
+        </div>
+        <div id="availCountsMeta" class="text-sm text-gray" style="padding:0 18px 12px">—</div>
+        <div style="overflow-x:auto">
+          <table class="data-table" id="availCountsTable">
+            <thead id="availCountsHead"></thead>
+            <tbody id="availCountsBody"></tbody>
           </table>
         </div>
       </div>
@@ -152,6 +216,19 @@
       </div>
 
       <div id="planningDays"></div>
+
+      <div class="card mt-4 no-print" id="planCountsCard">
+        <div class="card-header">
+          <div class="card-title">Récapitulatif par personne</div>
+        </div>
+        <div id="planCountsMeta" class="text-sm text-gray" style="padding:0 18px 12px">—</div>
+        <div style="overflow-x:auto">
+          <table class="data-table" id="planCountsTable">
+            <thead id="planCountsHead"></thead>
+            <tbody id="planCountsBody"></tbody>
+          </table>
+        </div>
+      </div>
 
       <!-- Vue tableau pour impression -->
       <div id="printView" class="hidden">
@@ -216,6 +293,9 @@ let cdzWeek   = toDateStr(getMondayOf());
 // In-memory draft assignments: { [day]: { [workerId]: shift|null } }
 let draftAssignments = {};
 
+// Slot ouvert pour la saisie des dispos (semaine affichée)
+let activeDispoSlot = null;
+
 // ═══════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════
@@ -258,9 +338,11 @@ function showApp() {
 async function initApp() {
   await loadWorkers();
   setSlotDefaults();
+  initDispoEntryListeners();
 
   // Caler toutes les semaines sur le slot actif (ou le plus récent)
   await syncWeeksToActiveSlot();
+  await maybeAutoGenerate();
 
   await loadDispoTab();
   await loadPlanningTab();
@@ -332,7 +414,8 @@ async function loadSlotFormSettingsForWeek() {
     document.getElementById('slotDeadline').value = toLocalDatetimeStr(data.deadline);
   }
 
-  document.getElementById('slotAutoSendPdf').checked = !!data?.auto_send_pdf;
+  const autoSendEl = document.getElementById('slotAutoSendPdf');
+  if (autoSendEl) autoSendEl.checked = !!data?.auto_send_pdf;
 }
 
 async function updateDeadlineFromWeek() {
@@ -461,6 +544,7 @@ document.getElementById('newWorkerName').addEventListener('keydown', e => {
 async function loadDispoTab() {
   await checkActiveSlot();
   renderDispoWeekNav();
+  await refreshDispoEntryForm();
   await loadAvailSummary();
 }
 
@@ -477,27 +561,17 @@ async function checkActiveSlot() {
   const formDiv = document.getElementById('openSlotForm');
 
   if (openSlots && openSlots.length) {
-    const base = window.location.href.replace(/admin\.html.*$/, 'index.html');
-    infoDiv.innerHTML = openSlots.map(s => {
-      const link = `${base}?slot=${s.id}`;
-      return `
+    infoDiv.innerHTML = openSlots.map(s => `
       <div class="alert alert-success" style="margin-bottom:10px">
-        <div class="flex gap-2" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">
+        <div class="flex gap-2" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap">
           <div>
             <strong>Collecte ouverte</strong> — ${formatWeekLabel(s.week_start)}<br>
-            <span class="text-sm">Fermeture : ${formatDeadline(s.deadline)}</span>
+            <span class="text-sm">Fermeture : ${formatDeadline(s.deadline)} · Saisie directe dans le formulaire ci-dessous</span>
           </div>
           <button class="btn btn-danger btn-sm" onclick="closeSlot('${s.id}')">Fermer</button>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.06);border-radius:6px;padding:8px 12px;flex-wrap:wrap">
-          <span style="font-size:12px;font-weight:600;flex:1;word-break:break-all;font-family:monospace">${link}</span>
-          <button class="btn btn-primary btn-sm" onclick="copyLink('${link}', this)">Copier</button>
-          <a class="btn btn-success btn-sm" href="https://wa.me/?text=${encodeURIComponent('Bonjour, vous pouvez remplir vos disponibilités de la semaine prochaine via ce lien svp 👇\n' + link)}" target="_blank">WhatsApp</a>
-        </div>
-      </div>`;
-    }).join('');
+      </div>`).join('');
 
-    // Si 2 semaines ouvertes, masquer le formulaire
     if (openSlots.length >= 2) {
       formDiv.classList.add('hidden');
       infoDiv.innerHTML += `<div class="alert alert-warning">Maximum 2 semaines ouvertes atteint.</div>`;
@@ -543,6 +617,7 @@ async function openSlot() {
   await syncWeeksToActiveSlot();
   await checkActiveSlot();
   renderDispoWeekNav();
+  await refreshDispoEntryForm();
   await loadAvailSummary();
 }
 
@@ -550,16 +625,303 @@ async function closeSlot(id) {
   await sb.from('availability_slots').update({ is_open: false }).eq('id', id);
   showToast('Collecte fermée');
   await checkActiveSlot();
+  await refreshDispoEntryForm();
 }
 
 function changeDispoWeek(dir) {
   dispoWeek = toDateStr(addDays(parseDate(dispoWeek), dir * 7));
   renderDispoWeekNav();
+  refreshDispoEntryForm();
   loadAvailSummary();
 }
 
 function renderDispoWeekNav() {
   document.getElementById('dispoWeekLabel').textContent = formatWeekLabel(dispoWeek);
+}
+
+// ── SAISIE DES DISPOS (intégrée, sans lien) ─────────────────
+function initDispoEntryListeners() {
+  const input = document.getElementById('dispoEntryWorker');
+  const suggestionsBox = document.getElementById('dispoEntrySuggestions');
+
+  input.addEventListener('input', function() {
+    renderDispoEntrySuggestions(this.value.trim());
+    if (this.value.trim().length < 2) {
+      document.getElementById('dispoEntryAvailForm').classList.add('hidden');
+    }
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = this.value.trim();
+      if (!val) return;
+      const firstMatch = allWorkers.find(w => w.name.toLowerCase().includes(val.toLowerCase()));
+      selectDispoEntryWorker(firstMatch ? firstMatch.name : val);
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => suggestionsBox.classList.add('hidden'), 150);
+  });
+
+  input.addEventListener('focus', function() {
+    if (this.value.trim().length >= 1) renderDispoEntrySuggestions(this.value.trim());
+  });
+
+  input.addEventListener('change', function() {
+    showDispoEntryFormForName(this.value.trim());
+  });
+}
+
+async function refreshDispoEntryForm() {
+  const now = new Date().toISOString();
+  const { data: slot } = await sb
+    .from('availability_slots')
+    .select('*')
+    .eq('week_start', dispoWeek)
+    .eq('is_open', true)
+    .gte('deadline', now)
+    .maybeSingle();
+
+  activeDispoSlot = slot || null;
+
+  const closedEl = document.getElementById('dispoEntryClosed');
+  const panelEl = document.getElementById('dispoEntryPanel');
+  const successEl = document.getElementById('dispoEntrySuccess');
+
+  successEl.classList.add('hidden');
+
+  if (!activeDispoSlot) {
+    closedEl.classList.remove('hidden');
+    panelEl.classList.add('hidden');
+    return;
+  }
+
+  closedEl.classList.add('hidden');
+  panelEl.classList.remove('hidden');
+
+  const mon = getMondayOf(parseDate(activeDispoSlot.week_start));
+  const sat = addDays(mon, 5);
+  document.getElementById('dispoEntryBanner').innerHTML =
+    `Semaine du <strong>${formatDate(mon, {day:'numeric',month:'long'})}</strong> au <strong>${formatDate(sat, {day:'numeric',month:'long'})}</strong>
+     &nbsp;·&nbsp; Fermeture le <strong>${formatDeadline(activeDispoSlot.deadline)}</strong>`;
+
+  const currentName = document.getElementById('dispoEntryWorker').value.trim();
+  if (currentName.length >= 2) {
+    await showDispoEntryFormForName(currentName);
+  } else {
+    document.getElementById('dispoEntryAvailForm').classList.add('hidden');
+  }
+}
+
+function buildDispoEntryGrid(weekStart, isChef = false) {
+  const grid = document.getElementById('dispoEntryGrid');
+  grid.innerHTML = '';
+  const mon = getMondayOf(parseDate(weekStart));
+
+  DAYS_FR.forEach((dayName, d) => {
+    const date = addDays(mon, d);
+    const dateLabel = formatDate(date, { weekday:'long', day:'numeric', month:'long' });
+    const prefix = 'de';
+
+    const slots = isChef
+      ? `${dispoEntryOpt(prefix, d, 'full', 'Disponible', '09H-18H', '')}
+         ${dispoEntryOpt(prefix, d, 'indispo', 'Indispo', '', 'opt-off')}`
+      : `${dispoEntryOpt(prefix, d, 'full', 'Journée', '09H-18H', '')}
+         ${dispoEntryOpt(prefix, d, 'matin', 'Matin', '09H-14H', 'opt-matin')}
+         ${dispoEntryOpt(prefix, d, 'apm', 'Après-midi', '14H-18H', 'opt-apm')}
+         ${dispoEntryOpt(prefix, d, 'indispo', 'Indispo', '', 'opt-off')}`;
+
+    grid.innerHTML += `
+      <div class="avail-day-card">
+        <div class="avail-day-name">${dateLabel}</div>
+        <div class="slot-options" ${isChef ? 'style="grid-template-columns:repeat(2,1fr)"' : ''}>
+          ${slots}
+        </div>
+      </div>`;
+  });
+}
+
+function dispoEntryOpt(prefix, day, val, label, time, cls) {
+  const id = `${prefix}-${day}-${val}`;
+  return `<div class="slot-opt ${cls}">
+    <input type="radio" name="${prefix}-day-${day}" id="${id}" value="${val}">
+    <label for="${id}">${label}<small>${time}</small></label>
+  </div>`;
+}
+
+function renderDispoEntrySuggestions(val) {
+  const suggestionsBox = document.getElementById('dispoEntrySuggestions');
+  suggestionsBox.innerHTML = '';
+  if (!val) { suggestionsBox.classList.add('hidden'); return; }
+
+  const matches = allWorkers.filter(w =>
+    w.name.toLowerCase().includes(val.toLowerCase())
+  ).slice(0, 8);
+
+  if (!matches.length) { suggestionsBox.classList.add('hidden'); return; }
+
+  matches.forEach(w => {
+    const item = document.createElement('div');
+    item.className = 'ac-item';
+    const idx = w.name.toLowerCase().indexOf(val.toLowerCase());
+    item.innerHTML = w.name.slice(0, idx)
+      + '<strong>' + w.name.slice(idx, idx + val.length) + '</strong>'
+      + w.name.slice(idx + val.length);
+    item.addEventListener('mousedown', () => selectDispoEntryWorker(w.name));
+    suggestionsBox.appendChild(item);
+  });
+
+  suggestionsBox.classList.remove('hidden');
+}
+
+async function selectDispoEntryWorker(name) {
+  document.getElementById('dispoEntryWorker').value = name;
+  document.getElementById('dispoEntrySuggestions').classList.add('hidden');
+  await showDispoEntryFormForName(name);
+}
+
+async function showDispoEntryFormForName(val) {
+  const formEl = document.getElementById('dispoEntryAvailForm');
+  if (!activeDispoSlot || val.length < 2) {
+    formEl.classList.add('hidden');
+    return;
+  }
+
+  const worker = allWorkers.find(w => w.name.toLowerCase() === val.toLowerCase());
+  if (!worker) {
+    formEl.classList.add('hidden');
+    return showToast('Préparateur inconnu — ajoute-le dans l\'onglet Préparateurs', 'error');
+  }
+
+  buildDispoEntryGrid(activeDispoSlot.week_start, !!worker.is_chef_de_zone);
+
+  const alreadySubmitted = await prefillDispoEntry(worker);
+  const btn = document.getElementById('dispoEntrySubmitBtn');
+  const notice = document.getElementById('dispoEntryModifyNotice');
+  if (alreadySubmitted) {
+    btn.textContent = 'Modifier les disponibilités';
+    notice.classList.remove('hidden');
+  } else {
+    btn.textContent = 'Enregistrer les disponibilités';
+    notice.classList.add('hidden');
+  }
+
+  formEl.classList.remove('hidden');
+}
+
+async function prefillDispoEntry(worker) {
+  const { data } = await sb
+    .from('availabilities')
+    .select('day_of_week, shift')
+    .eq('worker_id', worker.id)
+    .eq('week_start', activeDispoSlot.week_start);
+
+  if (!data || !data.length) return false;
+
+  data.forEach(a => {
+    const radio = document.querySelector(`input[name="de-day-${a.day_of_week}"][value="${a.shift}"]`);
+    if (radio) radio.checked = true;
+  });
+  return true;
+}
+
+async function submitDispoEntry() {
+  const typed = document.getElementById('dispoEntryWorker').value.trim();
+  if (!typed) return showToast('Sélectionne un préparateur', 'error');
+  if (!activeDispoSlot) return showToast('Collecte fermée pour cette semaine', 'error');
+
+  const worker = allWorkers.find(w => w.name.toLowerCase() === typed.toLowerCase());
+  if (!worker) return showToast('Préparateur inconnu — ajoute-le dans l\'onglet Préparateurs', 'error');
+
+  const rows = [];
+  for (let d = 0; d < 6; d++) {
+    const radio = document.querySelector(`input[name="de-day-${d}"]:checked`);
+    const shift = radio ? radio.value : 'indispo';
+    rows.push({
+      worker_id: worker.id,
+      week_start: activeDispoSlot.week_start,
+      day_of_week: d,
+      shift,
+    });
+  }
+
+  const btn = document.getElementById('dispoEntrySubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Enregistrement…';
+
+  const { error } = await sb.from('availabilities')
+    .upsert(rows, { onConflict: 'worker_id,week_start,day_of_week' });
+
+  btn.disabled = false;
+  btn.textContent = 'Enregistrer les disponibilités';
+
+  if (error) {
+    return showToast('Erreur : ' + error.message, 'error');
+  }
+
+  document.getElementById('dispoEntryPanel').classList.add('hidden');
+  document.getElementById('dispoEntrySuccessName').textContent = worker.name;
+  document.getElementById('dispoEntrySuccess').classList.remove('hidden');
+  showToast(`✅ Dispos de ${worker.name} enregistrées`);
+  await loadAvailSummary();
+}
+
+function resetDispoEntryForm() {
+  document.getElementById('dispoEntrySuccess').classList.add('hidden');
+  document.getElementById('dispoEntryWorker').value = '';
+  document.getElementById('dispoEntryAvailForm').classList.add('hidden');
+  document.getElementById('dispoEntryModifyNotice').classList.add('hidden');
+  document.getElementById('dispoEntrySubmitBtn').textContent = 'Enregistrer les disponibilités';
+  document.querySelectorAll('#dispoEntryGrid input[type="radio"]').forEach(r => { r.checked = false; });
+  document.getElementById('dispoEntryPanel').classList.remove('hidden');
+  document.getElementById('dispoEntryWorker').focus();
+}
+
+async function maybeAutoGenerate() {
+  const now = new Date().toISOString();
+  const { data: expired } = await sb
+    .from('availability_slots')
+    .select('*')
+    .eq('is_open', true)
+    .lt('deadline', now);
+
+  for (const slot of (expired || [])) {
+    const { count } = await sb
+      .from('schedule_assignments')
+      .select('id', { count:'exact', head:true })
+      .eq('week_start', slot.week_start);
+
+    if (!count) await runAutoGenerate(slot);
+    await sb.from('availability_slots').update({ is_open: false }).eq('id', slot.id);
+  }
+}
+
+async function runAutoGenerate(slot) {
+  const [{ data: avails }, { data: historical }] = await Promise.all([
+    sb.from('availabilities').select('*').eq('week_start', slot.week_start),
+    sb.from('schedule_assignments').select('worker_id, assigned_shift, week_start').lt('week_start', slot.week_start),
+  ]);
+
+  const schedule = generateSchedule(
+    allWorkers, avails || [], historical || [],
+    { maxPerDay: slot.max_per_day, maxDaysPerWorker: slot.max_days_per_worker, currentWeekStart: slot.week_start }
+  );
+
+  const rows = [];
+  const now = new Date().toISOString();
+  for (let day = 0; day < 6; day++) {
+    const d = schedule[day];
+    for (const [shift, ids] of Object.entries(d)) {
+      ids.forEach(wid => rows.push({ week_start: slot.week_start, day_of_week: day, worker_id: wid, assigned_shift: shift }));
+    }
+    await sb.from('schedule_days').upsert(
+      { week_start: slot.week_start, day_of_week: day, generated_at: now },
+      { onConflict: 'week_start,day_of_week' }
+    );
+  }
+  if (rows.length) await sb.from('schedule_assignments').insert(rows);
 }
 
 async function loadAvailSummary() {
@@ -576,13 +938,27 @@ async function loadAvailSummary() {
     avMap[a.worker_id][a.day_of_week] = a.shift;
   });
 
+  const countMap = {};
+  (data || []).forEach(a => {
+    if (!countMap[a.worker_id]) {
+      countMap[a.worker_id] = { full: 0, matin: 0, apm: 0, indispo: 0, total: 0 };
+    }
+    countMap[a.worker_id][a.shift] += 1;
+    countMap[a.worker_id].total += 1;
+  });
+
   const mon   = getMondayOf(parseDate(dispoWeek));
   const thead = document.getElementById('availSummaryHead');
   const tbody = document.getElementById('availSummaryBody');
+  const countHead = document.getElementById('availCountsHead');
+  const countBody = document.getElementById('availCountsBody');
+  const countMeta = document.getElementById('availCountsMeta');
 
   thead.innerHTML = '<tr><th>Préparateur</th>' +
     DAYS_FR.map((d,i) => `<th>${d.slice(0,3)}<br><small style="font-weight:400">${formatDate(addDays(mon,i),{day:'numeric',month:'numeric'})}</small></th>`).join('') +
     '<th>Action</th></tr>';
+
+  countHead.innerHTML = '<tr><th>Préparateur</th><th>Journée</th><th>Matin</th><th>Après-midi</th><th>Total</th></tr>';
 
   const LABEL = { full:'J', matin:'M', apm:'A-M', indispo:'—' };
 
@@ -610,6 +986,29 @@ async function loadAvailSummary() {
     const cdzBadge = isCdz ? ' <span style="font-size:11px;font-weight:700;background:var(--cf-blue);color:#fff;padding:2px 6px;border-radius:8px;text-decoration:none">CDZ</span>' : '';
     return `<tr style="${rowStyle}"><td style="text-decoration:none;opacity:1;font-weight:600">${w.name}${cdzBadge}${isExcluded ? ' <span style="font-size:11px;color:var(--cf-red);text-decoration:none">(retiré)</span>' : ''}</td>${cells}<td style="text-decoration:none;opacity:1">${isCdz ? '<span class="text-sm text-gray">Chef de zone</span>' : actionBtn}</td></tr>`;
   }).join('') || '<tr><td colspan="8" class="text-gray text-sm" style="padding:14px">Aucune disponibilité reçue pour cette semaine.</td></tr>';
+
+  const countRows = allWorkers
+    .filter(w => submittedIds.has(w.id))
+    .map(w => {
+      const counts = countMap[w.id] || { full: 0, matin: 0, apm: 0, indispo: 0, total: 0 };
+      const isCdz = !!w.is_chef_de_zone;
+      const badge = isCdz ? ' <span style="font-size:11px;font-weight:700;background:var(--cf-blue);color:#fff;padding:2px 6px;border-radius:8px;text-decoration:none">CDZ</span>' : '';
+      return {
+        total: counts.total,
+        html: `<tr>
+          <td style="font-weight:600">${w.name}${badge}</td>
+          <td>${counts.full}</td>
+          <td>${counts.matin}</td>
+          <td>${counts.apm}</td>
+          <td>${counts.total}</td>
+        </tr>`,
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+
+  countMeta.textContent = `${countRows.length} personne(s) ont envoyé leurs disponibilités pour cette semaine.`;
+
+  countBody.innerHTML = countRows.map(row => row.html).join('') || '<tr><td colspan="5" class="text-gray text-sm" style="padding:14px">Aucune disponibilité reçue pour cette semaine.</td></tr>';
 }
 
 async function removeWorker(wid, name) {
@@ -804,6 +1203,48 @@ async function renderPlanningDays() {
         </div>
       </div>`;
   }
+
+  renderPlanningCounts();
+}
+
+function renderPlanningCounts() {
+  const countMap = {};
+
+  for (let d = 0; d < 6; d++) {
+    Object.entries(draftAssignments[d] || {}).forEach(([wid, shift]) => {
+      if (!countMap[wid]) countMap[wid] = { full: 0, matin: 0, apm: 0, total: 0 };
+      countMap[wid][shift] += 1;
+      countMap[wid].total += 1;
+    });
+  }
+
+  const countHead = document.getElementById('planCountsHead');
+  const countBody = document.getElementById('planCountsBody');
+  const countMeta = document.getElementById('planCountsMeta');
+  if (!countHead || !countBody || !countMeta) return;
+
+  countHead.innerHTML = '<tr><th>Préparateur</th><th>Journée</th><th>Matin</th><th>Après-midi</th><th>Total</th></tr>';
+
+  const countRows = allWorkers
+    .filter(w => !w.is_chef_de_zone && countMap[w.id])
+    .map(w => ({
+      total: countMap[w.id].total,
+      html: `<tr>
+        <td style="font-weight:600">${w.name}</td>
+        <td>${countMap[w.id].full}</td>
+        <td>${countMap[w.id].matin}</td>
+        <td>${countMap[w.id].apm}</td>
+        <td>${countMap[w.id].total}</td>
+      </tr>`,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  countMeta.textContent = countRows.length
+    ? `${countRows.length} personne(s) affectée(s) cette semaine.`
+    : 'Aucune affectation pour cette semaine.';
+
+  countBody.innerHTML = countRows.map(row => row.html).join('')
+    || '<tr><td colspan="5" class="text-gray text-sm" style="padding:14px">Aucune affectation pour cette semaine.</td></tr>';
 }
 
 function toggleWorker(day, workerId, shift) {
@@ -1024,28 +1465,6 @@ async function saveCdz() {
     );
   }
   showToast('✅ Chefs de zone sauvegardés');
-}
-
-// ═══════════════════════════════════════════════════════════
-function copyLink(link, btn) {
-  navigator.clipboard.writeText(link).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = '✓ Copié !';
-    btn.disabled = true;
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
-  }).catch(() => {
-    // Fallback si clipboard API non dispo
-    const ta = document.createElement('textarea');
-    ta.value = link;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    btn.textContent = '✓ Copié !';
-    setTimeout(() => { btn.textContent = 'Copier le lien'; }, 2000);
-  });
 }
 
 // ═══════════════════════════════════════════════════════════
