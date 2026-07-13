@@ -815,44 +815,50 @@ body {
 
 /* ── PRINT ──────────────────────────────────────────────── */
 @media print {
-  @page { margin: 5mm; }
+  @page { margin: 4mm; }
 
   body { background: white; }
   .no-print { display: none !important; }
   .print-title {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
-    margin-bottom: 14px;
+    margin-bottom: 8px;
     color: var(--cf-blue);
   }
   .planning-wrap { overflow: visible; }
   .planning-table {
-    font-size: 10px;
+    font-size: 9px;
     min-width: 0;
     width: 100%;
     table-layout: fixed;
   }
   .planning-table td {
-    padding: 4px 6px;
+    padding: 2px 4px;
     overflow-wrap: anywhere;
     word-break: break-word;
+    white-space: nowrap;
   }
   .store-col {
-    min-width: 56px;
-    width: 56px;
-    font-size: 12px;
-    line-height: 1.2;
+    min-width: 48px;
+    width: 48px;
+    font-size: 11px;
+    line-height: 1.1;
   }
   .shift-label {
     width: 54px;
-    font-size: 10px;
+    font-size: 9px;
   }
   .chef-label,
   .chef-value {
-    font-size: 10px;
+    font-size: 9px;
   }
   .day-header {
-    font-size: 12px;
+    font-size: 11px;
+  }
+  .planning-table tr,
+  .planning-table td {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .store-col { background: var(--cf-blue) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .day-header { background: var(--cf-red) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
