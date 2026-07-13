@@ -819,6 +819,21 @@ body {
 
   body { background: white; }
   .no-print { display: none !important; }
+  .app-main {
+    max-width: none !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  #planningSection,
+  #planningSection .card,
+  #planningSection .planning-wrap {
+    max-width: none !important;
+    width: 100% !important;
+  }
+  #planningSection .card {
+    padding: 10px 12px !important;
+  }
   .print-title {
     font-size: 13px;
     font-weight: 700;
