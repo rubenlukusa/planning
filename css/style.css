@@ -213,7 +213,7 @@ body {
   border-color: var(--gray-200);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: var(--gray-100);
+  background: var(--white-100);
   border-color: var(--gray-300);
 }
 
